@@ -1,0 +1,11 @@
+[Unit]
+Description=Immich folder import scan
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=__RUN_USER__
+WorkingDirectory=__PROJECT_DIR__
+Environment=DAEMON_ENV_FILE=__DAEMON_ENV_FILE__
+ExecStart=__PROJECT_DIR__/scripts/run-folder-import-scan.sh

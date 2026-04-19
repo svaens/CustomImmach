@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Immich folder import scan periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=__INTERVAL_MINUTES__min
+Persistent=true
+Unit=__UNIT_NAME__.service
+
+[Install]
+WantedBy=timers.target
