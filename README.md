@@ -22,17 +22,23 @@ This project bootstraps a local `Immich` stack in `/home/sean/Personal/dev/Immac
 - `scripts/import-to-immich.sh`: One-shot importer.
 - `scripts/run-folder-import-scan.sh`: Scan wrapper used by systemd.
 - `scripts/install-folder-import-daemon.sh`: systemd installer.
-- `scripts/generate-self-signed-cert.sh`: helper for local HTTPS testing.
+- `scripts/generate-local-ca-certificates.sh`: helper for local CA-based HTTPS testing.
 
 ## Start Immich
 
-Put TLS files in `config/nginx/certs/` first:
-
-- a real certificate and key named `tls.crt` and `tls.key`, or
-- a self-signed certificate for local testing:
+Set the host name you want clients to use in `.env`:
 
 ```bash
-/home/sean/Personal/dev/Immach/scripts/generate-self-signed-cert.sh localhost
+PUBLIC_HOSTNAME=happygolucky-xmg
+```
+
+Put TLS files in `config/nginx/certs/` first:
+
+- a real certificate and key named `server.crt` and `server.key`, or
+- a local CA plus server certificate generated for local testing:
+
+```bash
+/home/sean/Personal/dev/Immach/scripts/generate-local-ca-certificates.sh
 ```
 
 ```bash
@@ -40,7 +46,11 @@ cd /home/sean/Personal/dev/Immach
 docker compose up -d
 ```
 
-Open `https://localhost`, create the first admin user, then create an API key in the Immich web UI.
+Open `https://$PUBLIC_HOSTNAME` or `https://localhost`, create the first admin user, then create an API key in the Immich web UI.
+
+For browser trust of the locally generated CA, import:
+
+- `/home/sean/Personal/dev/Immach/config/nginx/certs/ca.crt`
 
 ## HTTPS And Routing
 
@@ -123,4 +133,5 @@ The timer triggers `scripts/run-folder-import-scan.sh`, which then calls the imp
 - Face recognition is already built into Immich through `immich-machine-learning`; no separate plugin is required.
 - Redis is left ephemeral here because the critical persistent state is the asset storage and Postgres database.
 - HTTPS is handled by the bundled Nginx reverse proxy, not by Immich directly.
-- For internet-facing use, replace the self-signed certificate with a real certificate for your host name.
+- `PUBLIC_HOSTNAME` is the project setting used when generating the local CA-signed server certificate.
+- For Android and other mobile clients, a private local CA setup may still require manual trust on the device. The reliable internet-facing fix is a real certificate from a trusted public CA.

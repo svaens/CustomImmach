@@ -39,6 +39,7 @@ realpath_fallback() {
 
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DEFAULT_ENV_FILE="$PROJECT_DIR/config/importer.env"
+LOCAL_CA_CERT="$PROJECT_DIR/config/nginx/certs/ca.crt"
 ENV_FILE="$DEFAULT_ENV_FILE"
 SOURCE_DIR=""
 ALBUM_NAME=""
@@ -105,6 +106,32 @@ if [[ -z "${IMMICH_API_KEY:-}" ]]; then
   exit 1
 fi
 
+CLI_INSTANCE_URL="$IMMICH_INSTANCE_URL"
+DOCKER_RUN_ARGS=(run --rm)
+CLI_ENV_ARGS=(-e IMMICH_API_KEY)
+CLI_MOUNT_ARGS=()
+
+# When the CLI runs in Docker, localhost refers to the CLI container itself.
+# Rewrite localhost-style URLs to the host gateway so local Immich installs work.
+if [[ "$CLI_INSTANCE_URL" =~ ^https?://(localhost|127\.0\.0\.1|\[::1\]|::1)(/.*)?$ ]]; then
+  CLI_INSTANCE_URL="${CLI_INSTANCE_URL/localhost/host.docker.internal}"
+  CLI_INSTANCE_URL="${CLI_INSTANCE_URL/127.0.0.1/host.docker.internal}"
+  CLI_INSTANCE_URL="${CLI_INSTANCE_URL/\[::1\]/host.docker.internal}"
+  CLI_INSTANCE_URL="${CLI_INSTANCE_URL/::1/host.docker.internal}"
+  DOCKER_RUN_ARGS+=(--add-host host.docker.internal:host-gateway)
+
+  # Local testing commonly uses a local CA. Trust it if present.
+  if [[ "$IMMICH_INSTANCE_URL" =~ ^https:// ]]; then
+    if [[ -f "$LOCAL_CA_CERT" ]]; then
+      CLI_MOUNT_ARGS+=(-v "$LOCAL_CA_CERT:/usr/local/share/ca-certificates/immach-local-ca.crt:ro")
+      CLI_ENV_ARGS+=(-e NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/immach-local-ca.crt)
+    else
+      CLI_ENV_ARGS+=(-e NODE_TLS_REJECT_UNAUTHORIZED=0)
+      printf 'Warning: local CA cert not found at %s, disabling TLS verification for this upload\n' "$LOCAL_CA_CERT" >&2
+    fi
+  fi
+fi
+
 SOURCE_DIR=$(realpath_fallback "$SOURCE_DIR")
 if [[ ! -d "$SOURCE_DIR" ]]; then
   printf 'Source directory does not exist: %s\n' "$SOURCE_DIR" >&2
@@ -112,7 +139,8 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
 fi
 
 printf 'Repairing missing timestamps in %s\n' "$SOURCE_DIR"
-exiftool \
+if ! exiftool \
+  -m \
   -overwrite_original_in_place \
   -P \
   -r \
@@ -120,7 +148,9 @@ exiftool \
   '-DateTimeOriginal<FileModifyDate' \
   -if 'not $CreateDate' \
   '-CreateDate<FileModifyDate' \
-  "$SOURCE_DIR"
+  "$SOURCE_DIR"; then
+  printf 'exiftool reported errors while repairing metadata; continuing with upload of remaining files\n' >&2
+fi
 
 UPLOAD_ARGS=(upload --recursive)
 
@@ -157,10 +187,11 @@ if [[ -n "${IMMICH_IGNORE_PATTERNS:-}" ]]; then
 fi
 
 printf 'Uploading from %s to %s\n' "$SOURCE_DIR" "$IMMICH_INSTANCE_URL"
-docker run --rm \
+docker "${DOCKER_RUN_ARGS[@]}" \
   -v "$SOURCE_DIR:$SOURCE_DIR:ro" \
-  -e IMMICH_INSTANCE_URL \
-  -e IMMICH_API_KEY \
+  "${CLI_MOUNT_ARGS[@]}" \
+  -e IMMICH_INSTANCE_URL="$CLI_INSTANCE_URL" \
+  "${CLI_ENV_ARGS[@]}" \
   "$IMMICH_CLI_IMAGE" \
   "${UPLOAD_ARGS[@]}" \
   "$SOURCE_DIR"

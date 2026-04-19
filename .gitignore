@@ -1,0 +1,6 @@
+.env
+config/importer.env
+config/daemon.env
+data/
+config/nginx/certs/tls.crt
+config/nginx/certs/tls.key
