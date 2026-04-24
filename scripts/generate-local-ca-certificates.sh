@@ -11,6 +11,7 @@ SERVER_KEY="$CERT_DIR/server.key"
 SERVER_CSR="$CERT_DIR/server.csr"
 SERVER_CERT="$CERT_DIR/server.crt"
 OPENSSL_CONFIG="$CERT_DIR/server-openssl.cnf"
+CA_OPENSSL_CONFIG="$CERT_DIR/ca-openssl.cnf"
 
 DEFAULT_PRIMARY_NAME=localhost
 if [[ -f "$ENV_FILE" ]]; then
@@ -65,9 +66,25 @@ alt_names_section() {
   done
 }
 
+cat > "$CA_OPENSSL_CONFIG" <<EOF
+[req]
+prompt = no
+distinguished_name = dn
+x509_extensions = v3_ca
+
+[dn]
+CN = Immach Local NGINX CA
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+EOF
+
 openssl genrsa -out "$CA_KEY" 4096
 openssl req -x509 -new -nodes -key "$CA_KEY" -sha256 -days 3650 \
-  -subj "/CN=Immach Local NGINX CA" \
+  -config "$CA_OPENSSL_CONFIG" \
   -out "$CA_CERT"
 
 openssl genrsa -out "$SERVER_KEY" 4096
@@ -99,7 +116,7 @@ openssl x509 -req -in "$SERVER_CSR" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateser
 
 chmod 0600 "$CA_KEY" "$SERVER_KEY"
 chmod 0644 "$CA_CERT" "$SERVER_CERT"
-rm -f "$SERVER_CSR" "$OPENSSL_CONFIG" "$CERT_DIR/ca.srl"
+rm -f "$SERVER_CSR" "$OPENSSL_CONFIG" "$CA_OPENSSL_CONFIG" "$CERT_DIR/ca.srl"
 
 printf 'Generated certificate material in %s\n' "$CERT_DIR"
 printf 'Files:\n'

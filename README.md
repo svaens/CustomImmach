@@ -1,4 +1,4 @@
-# Immich Project
+# Immich Project - docker installation
 
 This project bootstraps a local `Immich` stack in `/home/sean/Personal/dev/Immach` with:
 
