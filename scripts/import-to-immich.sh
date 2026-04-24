@@ -24,6 +24,36 @@ require_cmd() {
   fi
 }
 
+extract_url_host() {
+  local url=$1
+  local authority host
+
+  authority=${url#*://}
+  authority=${authority%%/*}
+
+  if [[ "$authority" == \[* ]]; then
+    host=${authority%%]*}
+    printf '%s\n' "${host#[}"
+    return
+  fi
+
+  printf '%s\n' "${authority%%:*}"
+}
+
+resolve_host_ipv4() {
+  local host=$1
+  getent ahostsv4 "$host" 2>/dev/null | awk 'NR == 1 { print $1 }'
+}
+
+configure_https_trust() {
+  if [[ "$IMMICH_INSTANCE_URL" =~ ^https:// ]]; then
+    if [[ -f "$LOCAL_CA_CERT" ]]; then
+      CLI_MOUNT_ARGS+=(-v "$LOCAL_CA_CERT:/usr/local/share/ca-certificates/immach-local-ca.crt:ro")
+      CLI_ENV_ARGS+=(-e NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/immach-local-ca.crt)
+    fi
+  fi
+}
+
 realpath_fallback() {
   local input=$1
   if command -v realpath >/dev/null 2>&1; then
@@ -110,27 +140,26 @@ CLI_INSTANCE_URL="$IMMICH_INSTANCE_URL"
 DOCKER_RUN_ARGS=(run --rm)
 CLI_ENV_ARGS=(-e IMMICH_API_KEY)
 CLI_MOUNT_ARGS=()
+CLI_INSTANCE_HOST=$(extract_url_host "$CLI_INSTANCE_URL")
 
 # When the CLI runs in Docker, localhost refers to the CLI container itself.
 # Rewrite localhost-style URLs to the host gateway so local Immich installs work.
-if [[ "$CLI_INSTANCE_URL" =~ ^https?://(localhost|127\.0\.0\.1|\[::1\]|::1)(/.*)?$ ]]; then
+if [[ "$CLI_INSTANCE_HOST" =~ ^(localhost|127\.0\.0\.1|::1)$ ]]; then
   CLI_INSTANCE_URL="${CLI_INSTANCE_URL/localhost/host.docker.internal}"
   CLI_INSTANCE_URL="${CLI_INSTANCE_URL/127.0.0.1/host.docker.internal}"
   CLI_INSTANCE_URL="${CLI_INSTANCE_URL/\[::1\]/host.docker.internal}"
   CLI_INSTANCE_URL="${CLI_INSTANCE_URL/::1/host.docker.internal}"
   DOCKER_RUN_ARGS+=(--add-host host.docker.internal:host-gateway)
-
-  # Local testing commonly uses a local CA. Trust it if present.
-  if [[ "$IMMICH_INSTANCE_URL" =~ ^https:// ]]; then
-    if [[ -f "$LOCAL_CA_CERT" ]]; then
-      CLI_MOUNT_ARGS+=(-v "$LOCAL_CA_CERT:/usr/local/share/ca-certificates/immach-local-ca.crt:ro")
-      CLI_ENV_ARGS+=(-e NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/immach-local-ca.crt)
-    else
-      CLI_ENV_ARGS+=(-e NODE_TLS_REJECT_UNAUTHORIZED=0)
-      printf 'Warning: local CA cert not found at %s, disabling TLS verification for this upload\n' "$LOCAL_CA_CERT" >&2
-    fi
+elif [[ ! "$CLI_INSTANCE_HOST" =~ ^[0-9.]+$ ]]; then
+  # Containers often do not inherit mDNS or host /etc/hosts entries. If the host
+  # machine can resolve the configured name, pin that mapping into the CLI container.
+  CLI_INSTANCE_IP=$(resolve_host_ipv4 "$CLI_INSTANCE_HOST" || true)
+  if [[ -n "$CLI_INSTANCE_IP" ]]; then
+    DOCKER_RUN_ARGS+=(--add-host "$CLI_INSTANCE_HOST:$CLI_INSTANCE_IP")
   fi
 fi
+
+configure_https_trust
 
 SOURCE_DIR=$(realpath_fallback "$SOURCE_DIR")
 if [[ ! -d "$SOURCE_DIR" ]]; then
