@@ -1,6 +1,6 @@
 # Immich Project - docker installation
 
-This project bootstraps a local `Immich` stack in `/home/sean/Personal/dev/Immach` with:
+This project bootstraps a local `Immich` stack in `/home/sean/Personal/dev/ImmachCustomized` with:
 
 - Docker Compose using the official Immich services.
 - Nginx reverse proxy on `80` and `443`.
@@ -23,6 +23,7 @@ This project bootstraps a local `Immich` stack in `/home/sean/Personal/dev/Immac
 - `scripts/run-folder-import-scan.sh`: Scan wrapper used by systemd.
 - `scripts/install-folder-import-daemon.sh`: systemd installer.
 - `scripts/generate-local-ca-certificates.sh`: helper for local CA-based HTTPS testing.
+- `scripts/renew-local-ca-certificates.sh`: reissues the server certificate while preserving the local CA.
 
 ## Start Immich
 
@@ -38,11 +39,11 @@ Put TLS files in `config/nginx/certs/` first:
 - a local CA plus server certificate generated for local testing:
 
 ```bash
-/home/sean/Personal/dev/Immach/scripts/generate-local-ca-certificates.sh
+/home/sean/Personal/dev/ImmachCustomized/scripts/generate-local-ca-certificates.sh
 ```
 
 ```bash
-cd /home/sean/Personal/dev/Immach
+cd /home/sean/Personal/dev/ImmachCustomized
 docker compose up -d
 ```
 
@@ -50,7 +51,15 @@ Open `https://$PUBLIC_HOSTNAME` or `https://localhost`, create the first admin u
 
 For browser trust of the locally generated CA, import:
 
-- `/home/sean/Personal/dev/Immach/config/nginx/certs/ca.crt`
+- `/home/sean/Personal/dev/ImmachCustomized/config/nginx/certs/ca.crt`
+
+To renew only the local nginx server certificate while keeping the same local CA:
+
+```bash
+/home/sean/Personal/dev/ImmachCustomized/scripts/renew-local-ca-certificates.sh
+```
+
+This preserves browser trust for the existing CA and replaces only `server.crt` and `server.key`.
 
 ## HTTPS And Routing
 
@@ -78,7 +87,7 @@ If you want a branded URL, the supported shape is a dedicated host or subdomain 
 1. Copy the example importer config:
 
 ```bash
-cp /home/sean/Personal/dev/Immach/config/importer.env.example /home/sean/Personal/dev/Immach/config/importer.env
+cp /home/sean/Personal/dev/ImmachCustomized/config/importer.env.example /home/sean/Personal/dev/ImmachCustomized/config/importer.env
 ```
 
 2. Edit `config/importer.env` and set `IMMICH_API_KEY`.
@@ -86,7 +95,7 @@ cp /home/sean/Personal/dev/Immach/config/importer.env.example /home/sean/Persona
 3. Run the importer:
 
 ```bash
-/home/sean/Personal/dev/Immach/scripts/import-to-immich.sh /photos-legacy
+/home/sean/Personal/dev/ImmachCustomized/scripts/import-to-immich.sh /photos-legacy
 ```
 
 What the importer does:
@@ -110,7 +119,7 @@ The daemon installer uses a systemd timer rather than a long-running watcher. Fo
 Example:
 
 ```bash
-sudo /home/sean/Personal/dev/Immach/scripts/install-folder-import-daemon.sh \
+sudo /home/sean/Personal/dev/ImmachCustomized/scripts/install-folder-import-daemon.sh \
   --import-dir /photos-legacy \
   --server-url https://localhost/api \
   --api-key YOUR_API_KEY \

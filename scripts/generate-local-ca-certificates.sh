@@ -19,52 +19,100 @@ if [[ -f "$ENV_FILE" ]]; then
   DEFAULT_PRIMARY_NAME=${DEFAULT_PRIMARY_NAME:-localhost}
 fi
 
-PRIMARY_NAME=${1:-$DEFAULT_PRIMARY_NAME}
-if [[ $# -gt 0 ]]; then
-  shift
-fi
+DAYS_VALUE="${NGINX_CERT_DAYS:-825}"
 
-EXTRA_NAMES=("$@")
-if [[ ${#EXTRA_NAMES[@]} -eq 0 && "$PRIMARY_NAME" != "localhost" ]]; then
-  EXTRA_NAMES=("localhost")
-fi
+declare -A SEEN_DNS_NAMES=()
+declare -a DNS_NAMES=()
+declare -a IP_NAMES=()
 
-ALT_NAMES=("DNS:$PRIMARY_NAME")
-for name in "${EXTRA_NAMES[@]}"; do
-  ALT_NAMES+=("DNS:$name")
-done
+append_dns_name() {
+  local value=$1
 
-if [[ "$PRIMARY_NAME" != "localhost" ]]; then
-  ALT_NAMES+=("DNS:localhost")
-fi
-ALT_NAMES+=("IP:127.0.0.1")
+  [[ -n "$value" ]] || return 0
 
-mkdir -p "$CERT_DIR"
+  if [[ -z "${SEEN_DNS_NAMES[$value]+x}" ]]; then
+    DNS_NAMES+=("$value")
+    SEEN_DNS_NAMES["$value"]=1
+  fi
+}
 
-alt_names_section() {
-  local dns_index=1
-  local ip_index=1
-  local entry value
+append_ip_name() {
+  local value=$1
 
-  for entry in "${ALT_NAMES[@]}"; do
-    case "$entry" in
+  [[ -n "$value" ]] || return 0
+  IP_NAMES+=("$value")
+}
+
+set_default_alt_names() {
+  local primary_name=$1
+  shift || true
+
+  append_dns_name "$primary_name"
+
+  local extra_name
+  for extra_name in "$@"; do
+    append_dns_name "$extra_name"
+  done
+
+  append_dns_name "localhost"
+  append_ip_name "127.0.0.1"
+}
+
+load_alt_names_from_value() {
+  local alt_names_value=$1
+  local old_ifs=$IFS
+  IFS=','
+  read -r -a alt_name_entries <<< "$alt_names_value"
+  IFS=$old_ifs
+
+  local entry trimmed
+  for entry in "${alt_name_entries[@]}"; do
+    trimmed=$(printf '%s' "$entry" | sed 's/^ *//; s/ *$//')
+
+    case "$trimmed" in
       DNS:*)
-        value=${entry#DNS:}
-        printf 'DNS.%s = %s\n' "$dns_index" "$value"
-        dns_index=$((dns_index + 1))
+        append_dns_name "${trimmed#DNS:}"
         ;;
       IP:*)
-        value=${entry#IP:}
-        printf 'IP.%s = %s\n' "$ip_index" "$value"
-        ip_index=$((ip_index + 1))
+        append_ip_name "${trimmed#IP:}"
         ;;
       *)
-        printf 'Unsupported SAN entry: %s\n' "$entry" >&2
+        printf 'Unsupported SAN entry: %s\n' "$trimmed" >&2
         exit 1
         ;;
     esac
   done
 }
+
+alt_names_section() {
+  local dns_index=1
+  local ip_index=1
+  local value
+
+  for value in "${DNS_NAMES[@]}"; do
+    printf 'DNS.%s = %s\n' "$dns_index" "$value"
+    dns_index=$((dns_index + 1))
+  done
+
+  for value in "${IP_NAMES[@]}"; do
+    printf 'IP.%s = %s\n' "$ip_index" "$value"
+    ip_index=$((ip_index + 1))
+  done
+}
+
+PRIMARY_NAME="${NGINX_CERT_HOSTNAME:-${1:-$DEFAULT_PRIMARY_NAME}}"
+if [[ $# -gt 0 && -z "${NGINX_CERT_HOSTNAME:-}" ]]; then
+  shift
+fi
+
+if [[ -n "${NGINX_CERT_ALT_NAMES:-}" ]]; then
+  load_alt_names_from_value "${NGINX_CERT_ALT_NAMES}"
+else
+  EXTRA_NAMES=("$@")
+  set_default_alt_names "$PRIMARY_NAME" "${EXTRA_NAMES[@]}"
+fi
+
+mkdir -p "$CERT_DIR"
 
 cat > "$CA_OPENSSL_CONFIG" <<EOF
 [req]
@@ -112,7 +160,7 @@ EOF
 
 openssl req -new -key "$SERVER_KEY" -out "$SERVER_CSR" -config "$OPENSSL_CONFIG"
 openssl x509 -req -in "$SERVER_CSR" -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial \
-  -out "$SERVER_CERT" -days 825 -sha256 -extensions req_ext -extfile "$OPENSSL_CONFIG"
+  -out "$SERVER_CERT" -days "$DAYS_VALUE" -sha256 -extensions req_ext -extfile "$OPENSSL_CONFIG"
 
 chmod 0600 "$CA_KEY" "$SERVER_KEY"
 chmod 0644 "$CA_CERT" "$SERVER_CERT"
@@ -121,3 +169,5 @@ rm -f "$SERVER_CSR" "$OPENSSL_CONFIG" "$CA_OPENSSL_CONFIG" "$CERT_DIR/ca.srl"
 printf 'Generated certificate material in %s\n' "$CERT_DIR"
 printf 'Files:\n'
 printf '  %s\n' "ca.crt" "ca.key" "server.crt" "server.key"
+printf '\nEnvironment overrides:\n'
+printf '  %s\n' "NGINX_CERT_HOSTNAME" "NGINX_CERT_ALT_NAMES" "NGINX_CERT_DAYS"
