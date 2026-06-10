@@ -67,6 +67,46 @@ realpath_fallback() {
   printf '%s/%s\n' "$dir" "$base"
 }
 
+extract_json_output() {
+  local cli_output_file=$1
+  awk 'BEGIN { capture = 0 } /^\{/ { capture = 1 } capture { print }' "$cli_output_file"
+}
+
+move_processed_files() {
+  local source_dir=$1
+  local complete_dir=$2
+  local json_output_file=$3
+  local moved_count=0
+
+  while IFS= read -r file_path; do
+    [[ -n "$file_path" ]] || continue
+    [[ -f "$file_path" ]] || continue
+    [[ "$file_path" == "$source_dir/"* ]] || continue
+    [[ "$file_path" != "$complete_dir/"* ]] || continue
+
+    local relative_path destination_path
+    relative_path=${file_path#"$source_dir"/}
+    destination_path="$complete_dir/$relative_path"
+
+    mkdir -p "$(dirname "$destination_path")"
+
+    if [[ -e "$destination_path" ]]; then
+      printf 'Skipping move because destination already exists: %s\n' "$destination_path" >&2
+      continue
+    fi
+
+    mv "$file_path" "$destination_path"
+    moved_count=$((moved_count + 1))
+  done < <(
+    jq -r '
+      .newAssets[]?.filepath,
+      (.duplicates[]? | if type == "string" then . else .filepath // empty end)
+    ' "$json_output_file" | sort -u
+  )
+
+  printf 'Moved %s processed file(s) into %s\n' "$moved_count" "$complete_dir"
+}
+
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DEFAULT_ENV_FILE="$PROJECT_DIR/config/importer.env"
 LOCAL_CA_CERT="$PROJECT_DIR/config/nginx/certs/ca.crt"
@@ -122,6 +162,7 @@ fi
 
 require_cmd docker
 require_cmd exiftool
+require_cmd jq
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -167,21 +208,46 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
   exit 1
 fi
 
+COMPLETE_DIR="$SOURCE_DIR/.complete"
+IGNORE_COMPLETE_PATTERN='**/.complete/**'
+CLI_OUTPUT_FILE=$(mktemp)
+JSON_OUTPUT_FILE=$(mktemp)
+
+cleanup() {
+  rm -f "$CLI_OUTPUT_FILE" "$JSON_OUTPUT_FILE"
+}
+
+trap cleanup EXIT
+
 printf 'Repairing missing timestamps in %s\n' "$SOURCE_DIR"
-if ! exiftool \
-  -m \
-  -overwrite_original_in_place \
-  -P \
-  -r \
-  -if 'not $DateTimeOriginal' \
-  '-DateTimeOriginal<FileModifyDate' \
-  -if 'not $CreateDate' \
-  '-CreateDate<FileModifyDate' \
-  "$SOURCE_DIR"; then
+if ! find "$SOURCE_DIR" \
+    -path "$COMPLETE_DIR" -prune -o \
+    -type f \
+    ! \( \
+      -iname '*.mp4' -o \
+      -iname '*.mov' -o \
+      -iname '*.m4v' -o \
+      -iname '*.avi' -o \
+      -iname '*.mkv' -o \
+      -iname '*.webm' -o \
+      -iname '*.3gp' -o \
+      -iname '*.mts' -o \
+      -iname '*.m2ts' -o \
+      -iname '*.mpg' -o \
+      -iname '*.mpeg' \
+    \) \
+    -print0 | xargs -0 -r exiftool \
+      -m \
+      -overwrite_original_in_place \
+      -P \
+      -if 'not $DateTimeOriginal' \
+      '-DateTimeOriginal<FileModifyDate' \
+      -if 'not $CreateDate' \
+      '-CreateDate<FileModifyDate'; then
   printf 'exiftool reported errors while repairing metadata; continuing with upload of remaining files\n' >&2
 fi
 
-UPLOAD_ARGS=(upload --recursive)
+UPLOAD_ARGS=(upload --recursive --json-output --ignore "$IGNORE_COMPLETE_PATTERN")
 
 if [[ "${IMMICH_INCLUDE_HIDDEN:-false}" == "true" ]]; then
   UPLOAD_ARGS+=(--include-hidden)
@@ -223,4 +289,12 @@ docker "${DOCKER_RUN_ARGS[@]}" \
   "${CLI_ENV_ARGS[@]}" \
   "$IMMICH_CLI_IMAGE" \
   "${UPLOAD_ARGS[@]}" \
-  "$SOURCE_DIR"
+  "$SOURCE_DIR" | tee "$CLI_OUTPUT_FILE"
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  if extract_json_output "$CLI_OUTPUT_FILE" >"$JSON_OUTPUT_FILE" && jq -e . >/dev/null 2>&1 <"$JSON_OUTPUT_FILE"; then
+    move_processed_files "$SOURCE_DIR" "$COMPLETE_DIR" "$JSON_OUTPUT_FILE"
+  else
+    printf 'Could not parse immich-cli JSON output; leaving source files in place\n' >&2
+  fi
+fi
