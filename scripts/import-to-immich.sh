@@ -69,7 +69,38 @@ realpath_fallback() {
 
 extract_json_output() {
   local cli_output_file=$1
-  awk 'BEGIN { capture = 0 } /^\{/ { capture = 1 } capture { print }' "$cli_output_file"
+  awk '
+    BEGIN {
+      capture = 0
+      depth = 0
+      buffer = ""
+    }
+    /^[[:space:]]*\{$/ {
+      capture = 1
+      depth = 1
+      buffer = $0 "\n"
+      next
+    }
+    capture {
+      buffer = buffer $0 "\n"
+      if ($0 ~ /^[[:space:]]*\{$/) {
+        depth++
+      }
+      if ($0 ~ /^[[:space:]]*\}[[:space:]]*$/) {
+        depth--
+        if (depth == 0) {
+          last_json = buffer
+          capture = 0
+          buffer = ""
+        }
+      }
+    }
+    END {
+      if (last_json != "") {
+        printf "%s", last_json
+      }
+    }
+  ' "$cli_output_file"
 }
 
 move_processed_files() {
