@@ -75,7 +75,7 @@ extract_json_output() {
       depth = 0
       buffer = ""
     }
-    /^[[:space:]]*\{$/ {
+    !capture && /^[[:space:]]*\{$/ {
       capture = 1
       depth = 1
       buffer = $0 "\n"
@@ -86,7 +86,7 @@ extract_json_output() {
       if ($0 ~ /^[[:space:]]*\{$/) {
         depth++
       }
-      if ($0 ~ /^[[:space:]]*\}[[:space:]]*$/) {
+      if ($0 ~ /^[[:space:]]*\}[[:space:]]*,?[[:space:]]*$/) {
         depth--
         if (depth == 0) {
           last_json = buffer
