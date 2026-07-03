@@ -139,6 +139,7 @@ move_processed_files() {
 }
 
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+COMPOSE_ENV_FILE="$PROJECT_DIR/.env"
 DEFAULT_ENV_FILE="$PROJECT_DIR/config/importer.env"
 LOCAL_CA_CERT="$PROJECT_DIR/config/nginx/certs/ca.crt"
 ENV_FILE="$DEFAULT_ENV_FILE"
@@ -195,12 +196,17 @@ require_cmd docker
 require_cmd exiftool
 require_cmd jq
 
+if [[ -f "$COMPOSE_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a && source "$COMPOSE_ENV_FILE" && set +a
+fi
+
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   set -a && source "$ENV_FILE" && set +a
 fi
 
-: "${IMMICH_CLI_IMAGE:=ghcr.io/immich-app/immich-cli:latest}"
+: "${IMMICH_CLI_IMAGE:=ghcr.io/immich-app/immich-cli:${IMMICH_VERSION:-v3}}"
 : "${IMMICH_INSTANCE_URL:=http://localhost:2283/api}"
 
 if [[ -z "${IMMICH_API_KEY:-}" ]]; then

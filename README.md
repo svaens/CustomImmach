@@ -104,6 +104,7 @@ What the importer does:
 - Uploads recursively with the current Immich CLI container.
 - Uses Immich server-side duplicate detection, so re-running the import is safe.
 - Preserves original files and metadata during upload.
+- Follows the project `IMMICH_VERSION` by default when selecting the CLI image, so upgrades to a new server major version do not leave the importer on an older CLI.
 
 Optional flags:
 
@@ -144,3 +145,4 @@ The timer triggers `scripts/run-folder-import-scan.sh`, which then calls the imp
 - HTTPS is handled by the bundled Nginx reverse proxy, not by Immich directly.
 - `PUBLIC_HOSTNAME` is the project setting used when generating the local CA-signed server certificate.
 - For Android and other mobile clients, a private local CA setup may still require manual trust on the device. The reliable internet-facing fix is a real certificate from a trusted public CA.
+- Immich v3 removes and reshapes several REST endpoints, but this repo's import flow uses `immich-cli` rather than those endpoints directly. The main compatibility requirement here is to keep the CLI on the same server major version.
