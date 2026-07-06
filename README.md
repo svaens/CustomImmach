@@ -104,7 +104,7 @@ What the importer does:
 - Uploads recursively with the current Immich CLI container.
 - Uses Immich server-side duplicate detection, so re-running the import is safe.
 - Preserves original files and metadata during upload.
-- Follows the project `IMMICH_VERSION` by default when selecting the CLI image, so upgrades to a new server major version do not leave the importer on an older CLI.
+- Uses the published `immich-cli` image directly. The CLI image tags do not follow the server's `v3`/`v2` tag convention.
 
 Optional flags:
 

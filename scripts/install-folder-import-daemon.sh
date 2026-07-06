@@ -91,7 +91,7 @@ IMPORTER_ENV_FILE="$PROJECT_DIR/config/importer.env"
 install -d -m 0755 "$PROJECT_DIR/config" "$PROJECT_DIR/data"
 
 cat >"$IMPORTER_ENV_FILE" <<EOF
-IMMICH_CLI_IMAGE=ghcr.io/immich-app/immich-cli:\${IMMICH_VERSION:-v3}
+IMMICH_CLI_IMAGE=ghcr.io/immich-app/immich-cli:latest
 IMMICH_INSTANCE_URL=$SERVER_URL
 IMMICH_API_KEY=$API_KEY
 IMMICH_UPLOAD_CONCURRENCY=5

@@ -206,7 +206,7 @@ if [[ -f "$ENV_FILE" ]]; then
   set -a && source "$ENV_FILE" && set +a
 fi
 
-: "${IMMICH_CLI_IMAGE:=ghcr.io/immich-app/immich-cli:${IMMICH_VERSION:-v3}}"
+: "${IMMICH_CLI_IMAGE:=ghcr.io/immich-app/immich-cli:latest}"
 : "${IMMICH_INSTANCE_URL:=http://localhost:2283/api}"
 
 if [[ -z "${IMMICH_API_KEY:-}" ]]; then
