@@ -122,7 +122,13 @@ move_processed_files() {
     mkdir -p "$(dirname "$destination_path")"
 
     if [[ -e "$destination_path" ]]; then
-      printf 'Skipping move because destination already exists: %s\n' "$destination_path" >&2
+      if cmp -s "$file_path" "$destination_path"; then
+        rm "$file_path"
+        moved_count=$((moved_count + 1))
+        printf 'Removed already-completed source file: %s\n' "$file_path"
+      else
+        printf 'Skipping move because destination already exists with different contents: %s\n' "$destination_path" >&2
+      fi
       continue
     fi
 
