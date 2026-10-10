@@ -2,5 +2,6 @@
 config/importer.env
 config/daemon.env
 data/
+/bak/
 config/nginx/certs/tls.crt
 config/nginx/certs/tls.key

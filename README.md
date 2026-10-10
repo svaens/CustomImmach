@@ -139,6 +139,21 @@ The timer triggers `scripts/run-folder-import-scan.sh`, which then calls the imp
 
 ## Notes
 
+### Back up and upgrade Immich
+
+On the Immich server, run `scripts/backup-and-upgrade-immich.sh` from this checkout.
+The script checks that both Immich images use the moving `v3` tag, stops the
+application services, starts only PostgreSQL, writes and verifies a compressed
+database dump in `bak/`, pulls the two Immich images, and starts the full stack.
+It exits before pulling if the dump fails. In that case the application services
+remain stopped so the failure can be investigated; PostgreSQL remains running.
+The script also stops if pulling or starting fails and reports the backup path.
+
+The dump contains database metadata only. Back up `UPLOAD_LOCATION` separately
+to preserve your photos and videos. Keep a copy of both backups outside this
+server. Immich's [backup and restore guide](https://docs.immich.app/administration/backup-and-restore/)
+describes the files needed for recovery.
+
 - Immich stores uploaded originals under `./data/images`. With the storage template enabled, originals move into the `library` tree in Immich-native layout.
 - Face recognition is already built into Immich through `immich-machine-learning`; no separate plugin is required.
 - Redis is left ephemeral here because the critical persistent state is the asset storage and Postgres database.
